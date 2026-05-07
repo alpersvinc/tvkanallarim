@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web TV Player</title>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <style>
+        body { font-family: sans-serif; background: #1a1a1a; color: white; margin: 0; display: flex; height: 100vh; }
+        
+        /* Yan Kanal Listesi */
+        #sidebar { width: 250px; background: #252525; border-right: 1px solid #333; overflow-y: auto; }
+        .channel-item { padding: 15px; cursor: pointer; border-bottom: 1px solid #333; transition: 0.3s; }
+        .channel-item:hover { background: #3d3d3d; }
+        .channel-item.active { background: #e50914; font-weight: bold; }
+
+        /* Video Alanı */
+        #main { flex-grow: 1; display: flex; flex-direction: column; justify-content: center; background: black; }
+        video { width: 100%; max-height: 90vh; outline: none; }
+        .info { padding: 10px; text-align: center; color: #aaa; }
+    </style>
+</head>
+<body>
+
+<div id="sidebar">
+    <h3 style="text-align: center;">Kanal Listesi</h3>
+    <div id="channel-list">
+        <!-- Kanallar buraya gelecek -->
+    </div>
+</div>
+
+<div id="main">
+    <video id="video" controls autoplay></video>
+    <div class="info" id="current-channel">Kanal seçiniz...</div>
+</div>
+
+<script>
+    // Kanal Listesi (Buraya kendi linklerini ekle)
+    const channels = [
+        { name: "TRT 1", url: "https://tv-trt1.medya.trt.com.tr/master_720.m3u8" },
+        { name: "TRT 2", url: "https://tv-trt2.medya.trt.com.tr/master_720.m3u8" },
+        { name: "TRT Spor", url: "https://tv-trtspor1.medya.trt.com.tr/master_720.m3u8" },
+        { name: "TRT Belgesel", url: "https://tv-trtbelgesel.medya.trt.com.tr/master_720.m3u8" },
+        { name: "Kanal D", url: "https://demiroren.daioncdn.net//kanald/kanald_1080p.m3u8?&sid=8e6ui6bzeg09&app=da2109ea-5dfe-4107-89ab-23593336ed61&ce=3" },
+        { name: "D Max", url: "https://dogus.daioncdn.net/dmax/dmax_720p.m3u8?token=MXFUVFN6Z2cxTjhTQjl6VEhBWnRoTDNwRng4ZnBPZk9ReUxPdklhdGJSdz0=&sid=8e6vm97qwr7i&app=5a02c599-d17e-4982-9b04-090934d51af7&ce=3" },
+        { name: "TLC", url: "https://dogus.daioncdn.net/tlc/tlc_720p.m3u8?token=OHZMSCt0cC91cEtER2ZaVTF3L2xNZkRqZjBqcXFqZ3UwTHFnbDRQNyszYz0=&sid=8e6vqred2njx&app=1aca0aa1-06e3-41ff-a8e5-38d7df475469&ce=3" }
+    ];
+
+    const video = document.getElementById('video');
+    const channelList = document.getElementById('channel-list');
+    const currentInfo = document.getElementById('current-channel');
+    const hls = new Hls();
+
+    function playChannel(url, name, element) {
+        // Aktif kanal görselini güncelle
+        document.querySelectorAll('.channel-item').forEach(el => el.classList.remove('active'));
+        element.classList.add('active');
+        currentInfo.innerText = "Şu an izleniyor: " + name;
+
+        if (Hls.isSupported()) {
+            hls.loadSource(url);
+            hls.attachMedia(video);
+            hls.on(Hls.Events.MANIFEST_PARSED, function() {
+                video.play();
+            });
+        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+            // Safari desteği için
+            video.src = url;
+            video.addEventListener('loadedmetadata', function() {
+                video.play();
+            });
+        }
+    }
+
+    // Listeyi oluştur
+    channels.forEach(channel => {
+        const div = document.createElement('div');
+        div.className = 'channel-item';
+        div.innerText = channel.name;
+        div.onclick = () => playChannel(channel.url, channel.name, div);
+        channelList.appendChild(div);
+    });
+</script>
+
+</body>
+</html>
