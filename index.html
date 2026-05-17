@@ -3,104 +3,202 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Web TV Player</title>
+    <title>Kişisel IPTV Oynatıcı</title>
+    <!-- HLS.js Canlı Yayın Oynatma Kütüphanesi -->
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
     <style>
-        body { font-family: sans-serif; background: #1a1a1a; color: white; margin: 0; display: flex; height: 100vh; }
+        * { box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #141414; color: white; margin: 0; display: flex; height: 100vh; overflow: hidden; }
         
         /* Yan Kanal Listesi */
-        #sidebar { width: 250px; background: #252525; border-right: 1px solid #333; overflow-y: auto; }
-        .channel-item { padding: 15px; cursor: pointer; border-bottom: 1px solid #333; transition: 0.3s; }
-        .channel-item:hover { background: #3d3d3d; }
+        #sidebar { width: 300px; background: #1f1f1f; border-right: 1px solid #2d2d2d; display: flex; flex-direction: column; }
+        .sidebar-header { padding: 15px; border-bottom: 1px solid #2d2d2d; text-align: center; }
+        .sidebar-header h3 { margin: 0 0 10px 0; color: #e50914; }
+        
+        /* IPTV Giriş Kutusu */
+        #setup-container { padding: 10px; background: #252525; border-bottom: 1px solid #2d2d2d; }
+        .iptv-input { width: 100%; padding: 8px; background: #333; border: 1px solid #444; color: white; border-radius: 4px; margin-bottom: 8px; font-size: 12px; }
+        .iptv-btn { width: 100%; padding: 8px; background: #e50914; border: none; color: white; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        .iptv-btn:hover { background: #b80710; }
+
+        /* Arama Kutusu */
+        #search-box { padding: 10px; }
+        .search-input { width: 100%; padding: 8px; background: #2b2b2b; border: 1px solid #444; color: white; border-radius: 4px; }
+
+        /* Kanal Listesi Alanı */
+        #channel-list { flex-grow: 1; overflow-y: auto; }
+        .channel-item { padding: 12px 15px; cursor: pointer; border-bottom: 1px solid #282828; transition: 0.2s; font-size: 14px; display: flex; align-items: center; }
+        .channel-item:hover { background: #2b2b2b; }
         .channel-item.active { background: #e50914; font-weight: bold; }
 
-        /* Video Alanı */
-        #main { flex-grow: 1; display: flex; flex-direction: column; justify-content: center; background: black; }
-        video { width: 100%; max-height: 90vh; outline: none; }
-        .info { padding: 10px; text-align: center; color: #aaa; }
+        /* Video Oynatıcı Alanı */
+        #main-content { flex-grow: 1; display: flex; flex-direction: column; background: black; position: relative; }
+        #video-container { flex-grow: 1; display: flex; justify-content: center; align-items: center; background: #000; }
+        video { width: 100%; height: 100%; max-height: 100vh; object-fit: contain; }
+        
+        /* Alt Bilgi Barı */
+        .info-bar { padding: 15px; background: #1f1f1f; border-top: 1px solid #2d2d2d; text-align: center; color: #aaa; font-size: 14px; }
+        
+        /* Yükleniyor Bildirimi */
+        #loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.7); padding: 15px 25px; border-radius: 5px; display: none; z-index: 10; }
     </style>
 </head>
 <body>
 
 <div id="sidebar">
-    <h3 style="text-align: center;">Kanal Listesi</h3>
-    <div id="channel-list">
-        <!-- Kanallar buraya gelecek -->
+    <div class="sidebar-header">
+        <h3>Web TV Player</h3>
     </div>
+    
+    <!-- IPTV Ayar Alanı -->
+    <div id="setup-container">
+        <input type="text" id="iptv-url-input" class="iptv-input" placeholder="http://hdpro3.site:8080/get.php?username=B4FlnuXHSg&password=rHkeF3C9lX&type=m3u_plus&output=ts">
+        <button onclick="saveIptvUrl()" class="iptv-btn">Listeyi Yükle</button>
+    </div>
+
+    <!-- Kanal Arama -->
+    <div id="search-box">
+        <input type="text" id="search" class="search-input" placeholder="Kanal ara..." oninput="filterChannels()">
+    </div>
+
+    <!-- Kanalların Listeleneceği Yer -->
+    <div id="channel-list"></div>
 </div>
 
-<div id="main">
-    <video id="video" controls autoplay></video>
-    <div class="info" id="current-channel">Kanal seçiniz...</div>
+<div id="main-content">
+    <div id="loading">Yayın Yükleniyor...</div>
+    <div id="video-container">
+        <video id="video" controls autoplay></video>
+    </div>
+    <div class="info-bar" id="current-channel">Sol taraftan bir IPTV linki yükleyin ve kanal seçin.</div>
 </div>
 
 <script>
-    // IPTV sağlayıcından aldığın uzun .m3u veya .m3u8 linkini buraya yapıştır
-const iptvM3uUrl = "http://andro2.vip:8080/get.php?username=B4FlnuXHSg&password=rHkeF3C9lX&type=m3u_plus&output=ts
-"; 
+    const video = document.getElementById('video');
+    const channelList = document.getElementById('channel-list');
+    const currentInfo = document.getElementById('current-channel');
+    const loadingDiv = document.getElementById('loading');
+    const hls = new Hls();
+    
+    let allChannels = []; // Çekilen tüm kanalları hafızada tutmak için
 
-const video = document.getElementById('video');
-const channelList = document.getElementById('channel-list');
-const currentInfo = document.getElementById('current-channel');
-const hls = new Hls();
+    // Sayfa yüklendiğinde daha önce kaydedilmiş link varsa otomatik yükle
+    window.onload = function() {
+        const savedUrl = localStorage.getItem('iptv_link');
+        if (savedUrl) {
+            document.getElementById('iptv-url-input').value = savedUrl;
+            fetchAndParseM3u(savedUrl);
+        }
+    };
 
-// M3U dosyasını indirip kanalları ayrıştıran fonksiyon
-async function loadIptvChannels() {
-    try {
-        // IPTV linkini CORS proxy üzerinden çekiyoruz ki tarayıcı engellemesin
-        const response = await fetch(`https://corsproxy.io/?url=${encodeURIComponent(iptvM3uUrl)}`);
-        const data = await response.text();
-        
-        const lines = data.split('\n');
-        let currentChannelName = "";
+    // Kullanıcı yeni link girdiğinde tetiklenir
+    function saveIptvUrl() {
+        const url = document.getElementById('iptv-url-input').value.trim();
+        if (!url) {
+            alert("Lütfen geçerli bir link girin.");
+            return;
+        }
+        localStorage.setItem('iptv_link', url);
+        fetchAndParseM3u(url);
+    }
 
-        lines.forEach(line => {
-            line = line.trim();
-            if (line.startsWith('#EXTINF:')) {
-                // Kanal adını satırdan ayıkla (genellikle virgülünden sonrasıdır)
-                const nameParts = line.split(',');
-                currentChannelName = nameParts[nameParts.length - 1];
-            } else if (line.startsWith('http')) {
-                // Eğer satır link içeriyorsa ve bir kanal adı bulunmuşsa listeye ekle
-                if (currentChannelName) {
-                    createChannelItem(currentChannelName, line);
+    // M3U Listesini indiren ve parçalayan fonksiyon
+    async function fetchAndParseM3u(m3uUrl) {
+        currentInfo.innerText = "IPTV Listesi indiriliyor, lütfen bekleyin...";
+        channelList.innerHTML = "";
+        allChannels = [];
+
+        try {
+            // Tarayıcı CORS engeline takılmamak için proxy kullanıyoruz
+            const proxyUrl = `https://corsproxy.io/?url=${encodeURIComponent(m3uUrl)}`;
+            const response = await fetch(proxyUrl);
+            const data = await response.text();
+            
+            const lines = data.split('\n');
+            let currentName = "";
+
+            for (let i = 0; i < lines.length; i++) {
+                let line = lines[i].trim();
+                if (line.startsWith('#EXTINF:')) {
+                    // Satırdaki virgülden sonrasını (Kanal adını) alıyoruz
+                    const commaIndex = line.lastIndexOf(',');
+                    if (commaIndex !== -1) {
+                        currentName = line.substring(commaIndex + 1).trim();
+                    }
+                } else if (line.startsWith('http')) {
+                    if (currentName) {
+                        allChannels.push({ name: currentName, url: line });
+                        currentName = ""; // Temizle
+                    }
                 }
             }
+
+            currentInfo.innerText = `${allChannels.length} kanal başarıyla yüklendedi.`;
+            renderChannels(allChannels);
+
+        } catch (error) {
+            console.error(error);
+            currentInfo.innerText = "Liste yüklenirken hata oluştu! Linki veya internetinizi kontrol edin.";
+        }
+    }
+
+    // Kanalları ekrana basan fonksiyon
+    function renderChannels(channelsToRender) {
+        channelList.innerHTML = "";
+        if(channelsToRender.length === 0) {
+            channelList.innerHTML = "<div style='padding:15px; color:#666;'>Kanal bulunamadı.</div>";
+            return;
+        }
+
+        channelsToRender.forEach(channel => {
+            const div = document.createElement('div');
+            div.className = 'channel-item';
+            div.innerText = channel.name;
+            div.onclick = () => playChannel(channel.url, channel.name, div);
+            channelList.appendChild(div);
         });
-    } catch (error) {
-        console.error("IPTV Listesi yüklenirken hata oluştu:", error);
-        currentInfo.innerText = "Liste yüklenemedi. Linki veya Proxy'yi kontrol edin.";
     }
-}
 
-function createChannelItem(name, url) {
-    const div = document.createElement('div');
-    div.className = 'channel-item';
-    div.innerText = name;
-    div.onclick = () => playChannel(url, name, div);
-    channelList.appendChild(div);
-}
-
-function playChannel(url, name, element) {
-    document.querySelectorAll('.channel-item').forEach(el => el.classList.remove('active'));
-    element.classList.add('active');
-    currentInfo.innerText = "Şu an izleniyor: " + name;
-
-    // IPTV linkini oynatırken de CORS sorununu aşmak için proxy kullanabiliriz
-    const proxiedUrl = `https://corsproxy.io/?url=${encodeURIComponent(url)}`;
-
-    if (Hls.isSupported()) {
-        hls.loadSource(proxiedUrl);
-        hls.attachMedia(video);
-        hls.on(Hls.Events.MANIFEST_PARSED, () => video.play());
-    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-        video.src = proxiedUrl;
-        video.addEventListener('loadedmetadata', () => video.play());
+    // Arama yapıldığında listeyi filtreler
+    function filterChannels() {
+        const query = document.getElementById('search').value.toLowerCase();
+        const filtered = allChannels.filter(c => c.name.toLowerCase().includes(query));
+        renderChannels(filtered);
     }
-}
 
-// Sayfa açıldığında IPTV listesini yükle
-loadIptvChannels();
+    // Kanalı oynatan fonksiyon
+    function playChannel(url, name, element) {
+        document.querySelectorAll('.channel-item').forEach(el => el.classList.remove('active'));
+        element.classList.add('active');
+        currentInfo.innerText = "Şu an izleniyor: " + name;
+        loadingDiv.style.display = "block";
+
+        // Güvenlik filtrelerini aşmak için yayın linkini de proxyliyoruz
+        const proxiedStreamUrl = `https://corsproxy.io/?url=${encodeURIComponent(url)}`;
+
+        if (Hls.isSupported()) {
+            hls.detachMedia();
+            hls.loadSource(proxiedStreamUrl);
+            hls.attachMedia(video);
+            hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                video.play();
+                loadingDiv.style.display = "none";
+            });
+            hls.on(Hls.Events.ERROR, function (event, data) {
+                if (data.fatal) {
+                    loadingDiv.style.display = "none";
+                    currentInfo.innerText = "Yayın yüklenemedi (CORS veya Sunucu Hatası): " + name;
+                }
+            });
+        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+            // Safari ve iOS desteği için
+            video.src = proxiedStreamUrl;
+            video.addEventListener('loadedmetadata', () => {
+                video.play();
+                loadingDiv.style.display = "none";
+            });
+        }
+    }
 </script>
 
 </body>
